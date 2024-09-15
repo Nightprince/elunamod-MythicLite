@@ -1,0 +1,57 @@
+INSERT INTO `item_template` VALUES (1899980, 9, 0, -1, 'Mythic Keystone', 6334, 1, 64, 0, 1, 0, 0, 0, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3000122, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, -1, 0, 0, 0, 0, -1, 0, -1, 0, 0, 0, 0, -1, 0, -1, 0, 0, 0, 0, -1, 0, -1, 0, '', 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0, 0, '', 0, 0, 0, 0, 0, 12340);
+
+INSERT INTO `gameobject_template` VALUES (1000003, 5, 7203, 'Forcefield 000', '', '', '', 0.1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, '', '', 12340);
+
+-- Dumping structure for table fun_world.eluna_counters
+CREATE TABLE IF NOT EXISTS `eluna_counters` (
+  `value_1` int DEFAULT NULL,
+  `value_2` int DEFAULT NULL,
+  `script_name` varchar(50) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COMMENT='random counters logged for eluna\r\n---\r\nval1 = 1st value logged\r\n---\r\nscript_name = name of script that refers here';
+
+-- Dumping structure for table fun_world.eluna_mythiclite_affixes_pool
+CREATE TABLE IF NOT EXISTS `eluna_mythiclite_affixes_pool` (
+  `spellID` int DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='spellID = spellID of the affix that was generated for the pool';
+
+-- Dumping structure for table fun_world.eluna_mythiclite_affixes_template
+CREATE TABLE IF NOT EXISTS `eluna_mythiclite_affixes_template` (
+  `spellID` int DEFAULT NULL,
+  `base_stack` int DEFAULT NULL,
+  `stack_per_level` int DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='spellID, base_stack, stack_per_level';
+
+-- Dumping structure for table fun_world.eluna_mythiclite_keystones
+CREATE TABLE IF NOT EXISTS `eluna_mythiclite_keystones` (
+  `itemGUID` int DEFAULT NULL,
+  `playerGUID` int DEFAULT NULL,
+  `mythicLevel` int DEFAULT NULL,
+  `mapID` int DEFAULT NULL,
+  `affixString` varchar(499) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
+  `timestamp` int DEFAULT NULL,
+  `progress` int DEFAULT NULL,
+  `instanceID` int DEFAULT NULL,
+  `bosses` int DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='itemGUID, playerGUID, mythicLevel, mapID, affixString, timestamp, progress, instanceID, lastboss\r\nAffix String = our "list" of affixes\r\ntimestamp = when we start the mythic dungeon\r\nprogress = how far a mythic has progressed. This is determined in a percentage 0-100.\r\ninstanceID = the ID of the dungeon that keystone will be consumed in.\r\nbosses = a whole integer storing the real progress of boss kills';
+
+-- Dumping structure for table fun_world.eluna_mythiclite_progress
+CREATE TABLE IF NOT EXISTS `eluna_mythiclite_progress` (
+  `creatureGUID` int DEFAULT NULL,
+  `instanceID` int DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='saves progress data of each keystone dungeon. if a mob is in here, it means that it is considered killed for the progress of the dungeon.';
+
+-- Dumping structure for table fun_world.eluna_mythiclite_template
+CREATE TABLE IF NOT EXISTS `eluna_mythiclite_template` (
+  `mapID` int DEFAULT NULL,
+  `lastBossID` int DEFAULT NULL,
+  `timelimit` int DEFAULT NULL,
+  `totalMobs` int DEFAULT NULL,
+  `totalMod` int DEFAULT NULL,
+  `dungeonName` varchar(50) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='mapID = mapID of the dungeon\r\nlastBossID = creature ID of the final boss\r\ntimelimit = amount of time it would take to clear this dungeon, in seconds\r\ntotalMobs= amount of creatures total detected for this dungeon. find these in-game by typing ".mythiclite" as a GM and while on said map.\r\ntotalMod= if you want 100% clear you would make this 100. If you want 50% clear required, you would make this 50.\r\ndungeonName = never sent to the client. just a comment for db reading.';
+
+-- Dumping structure for table fun_world.eluna_mythiclite_template_mobs
+CREATE TABLE IF NOT EXISTS `eluna_mythiclite_template_mobs` (
+  `guid` int DEFAULT NULL,
+  `mapID` int DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='saves GUID info in relation to the mapID. if you need to manually add a creature to the progression list for whatever reason, this is how you would do it.';
