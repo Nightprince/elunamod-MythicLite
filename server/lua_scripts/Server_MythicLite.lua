@@ -20,6 +20,7 @@ local MYTHIC_START_TIMER = 11 -- how long in seconds the sphere will last before
 local RBAC_LVL = 3 -- the security level required for the GM commands
 
 local MYTHIC_OBJECTIVES_BOSS = 1 -- 1 = true, 0 = false. determines if bosses are required for the mythic dungeon. requires MYTHIC_OBJECTIVES_ENEMY_FORCES = 1.
+-- ^ actually, needs to always be 1 because we are requiring bosses for the zero mythic dungeons.
 local MYTHIC_OBJECTIVES_ENEMY_FORCES = 1 -- 1 = true, 0 = false. determines if the force requirement is enabled or not.
 
 local function MythicLite_OnGameObjectUse(event, object, player)
@@ -177,29 +178,30 @@ local function Cache_Data()
 	mythiclite_template_bosses = {}
 	mythiclite_progress = {}
 	mythiclite_records = {}
+	wip_affixes_template = {} -- a wip cache object that is slowly phasing out the current template object.
 
 	print("[MythicLite.lua] Performing cache generation of data . . .")
 	local query = WorldDBQuery("SELECT * FROM eluna_mythiclite_template;") -- cache the dungeon templates. mythiclite_template[x] = {mapID, lastBossID, timelimit, totalMod, dungeonName}
 	if query then
 		print("[MythicLite.lua] Caching mythic dungeon templates . . .")
 		for x=1,query:GetRowCount(),1 do
-			local mapID = query:GetUInt32(0)
+			local mapID = query:GetInt32(0)
 		--	local lastBossID = query:GetUInt32(1)
-			local timelimit = query:GetUInt32(1)
+			local timelimit = query:GetInt32(1)
 		--	local totalMobs = query:GetUInt32(3)
-			local totalMod = query:GetUInt32(2)
+			local totalMod = query:GetInt32(2)
 			local dungeonName = query:GetString(3)
-			-- mythiclite_template[x] = {mapID, lastBossID, timelimit, totalMod, dungeonName}
-			mythiclite_template[x] = {mapID, 0, timelimit, 0, totalMod, dungeonName}
+			-- mythiclite_template[x] = {mapID, timelimit, totalMod, dungeonName}
+			mythiclite_template[x] = {mapID, timelimit, 0, totalMod, dungeonName}
 			query:NextRow()
 		end
 		-- print the cache
-		--[[
+		
 		for k,v in pairs(mythiclite_template) do
 			--print(k, v[1], v[2], v[3], v[4], v[5], v[6])
-			print("MapID: " .. v[1], "LastBossID: " .. v[2], "Timelimit: " .. v[3], "TotalMobs: " .. v[4], "TotalMod: " .. v[5], "DungeonName: " .. v[6])
+			print("MapID: " .. v[1], "Timelimit: " .. v[2], "TotalMod: " .. v[4], "DungeonName: " .. v[5])
 		end
-		]]
+		
 		-- print the total amount of dungeons cached
 		print("[MythicLite.lua] Total dungeon templates cached: " .. #mythiclite_template)
 	else
@@ -213,6 +215,14 @@ local function Cache_Data()
 			local base_stack = query:GetUInt32(1)
 			local stack_per_level = query:GetUInt32(2)
 			mythiclite_affixes_template[x] = {spellID, base_stack, stack_per_level}
+			
+			if (wip_affixes_template[spellID] == nil) then
+				wip_affixes_template[spellID] = {}
+			end
+
+			wip_affixes_template[spellID]["base_stacks"] = base_stack
+			wip_affixes_template[spellID]["stacks_per_level"] = stack_per_level
+			
 			query:NextRow()
 		end
 		-- print the cache
@@ -314,30 +324,25 @@ local function Cache_Data()
 	-- the following query produces dbtableguidlow results for all hostiles creatures on any maps listed in mythiclite_template, excluding faction 35 and 31 (friendly / neutral(passive)).
 	-- query = WorldDBQuery("SELECT c.guid, c.map FROM fun_world.creature c INNER JOIN fun_world.eluna_mythiclite_template emt ON c.map = emt.mapID INNER JOIN fun_world.creature_template ct ON c.id1 = ct.entry WHERE ct.faction NOT IN (35, 31);")
 	print("[MythicLite.Lua] Caching enemy forces data...")
-	if MYTHIC_OBJECTIVES_ENEMY_FORCES == 1 then
-		query = WorldDBQuery("SELECT `guid`, `mapID` FROM fun_world.eluna_mythiclite_template_mobs;")
-		if query then -- local mythiclite_template_mobs = [mapID] = {guid1, guid2, guid3, ...}
-			for x=1,query:GetRowCount(),1 do
-				local guid = query:GetUInt32(0)
-				local mapID = query:GetUInt32(1)
-				if (mythiclite_template_mobs[mapID] == nil) then
-					mythiclite_template_mobs[mapID] = {}
-				end
-				table.insert(mythiclite_template_mobs[mapID], guid)
-				query:NextRow()
+	query = WorldDBQuery("SELECT `guid`, `mapID` FROM fun_world.eluna_mythiclite_template_mobs;")
+	if query then -- local mythiclite_template_mobs = [mapID] = {guid1, guid2, guid3, ...}
+		for x=1,query:GetRowCount(),1 do
+			local guid = query:GetUInt32(0)
+			local mapID = query:GetUInt32(1)
+			if (mythiclite_template_mobs[mapID] == nil) then
+				mythiclite_template_mobs[mapID] = {}
 			end
-			-- print the amount of mobs cached and the amount of dungeons separately
-			print("[MythicLite.Lua] Collating mob data...")
-			for k,v in pairs(mythiclite_template_mobs) do
-				print("MapID:" .. k, "Mobs:" .. #v)
-			end
-			print("[MythicLite.Lua] Mob data cached.")
-		else
-			print("[MythicLite.Lua] No mob data found. We can continue, but enemy forces objectives will be disabled.")
-			MYTHIC_OBJECTIVES_ENEMY_FORCES = 0
+			table.insert(mythiclite_template_mobs[mapID], guid)
+			query:NextRow()
 		end
+		-- print the amount of mobs cached and the amount of dungeons separately
+		print("[MythicLite.Lua] Collating mob data...")
+		for k,v in pairs(mythiclite_template_mobs) do
+			print("MapID:" .. k, "Mobs:" .. #v)
+		end
+		print("[MythicLite.Lua] Mob data cached.")
 	else
-		print("[MythicLite.Lua] Objective enemy forces is disabled.")
+		print("[MythicLite.Lua] No mob data found. We can continue, but enemy forces objectives will be disabled.")
 	end
 	-- cache bosses query
 	--[[
@@ -358,58 +363,54 @@ AND (
     OR (ct.mechanic_immune_mask & (1 << 7)) != 0
     OR ct.rank = 3
 );]]
-	if MYTHIC_OBJECTIVES_BOSS == 1 then
+	print("[MythicLite.Lua] Caching boss data...")
+	if mythiclite_template_mobs == nil then -- check if mob data nil
+		print("[MythicLite.Lua] No mob data found. We can continue, but boss objectives will be disabled.")
+	end
 
-		print("[MythicLite.Lua] Caching boss data...")
-
-		if mythiclite_template_mobs == nil then -- check if mob data nil
-			print("[MythicLite.Lua] No mob data found. We can continue, but boss objectives will be disabled.")
-			MYTHIC_OBJECTIVES_BOSS = 0
-		end
-
-		local query_string = ""
-		for k,v in pairs(mythiclite_template_mobs) do
-			for i = 1, #v do
-				if i == #v then -- do not leave a trailing comma
-					query_string = query_string .. v[i]
-				else
-					query_string = query_string .. v[i] .. ", "
-				end
+	local query_string = ""
+	for k,v in pairs(mythiclite_template_mobs) do
+		for i = 1, #v do
+			if i == #v then -- do not leave a trailing comma
+				query_string = query_string .. v[i]
+			else
+				query_string = query_string .. v[i] .. ", "
 			end
 		end
+	end
 
-		--local query = "SELECT c.guid AS CreatureGUID, c.map AS CreatureMap FROM creature c JOIN creature_template ct ON c.id1 = ct.entry WHERE c.guid IN (" ..query_string .. ") AND ((ct.mechanic_immune_mask & (1 << 1)) != 0 OR (ct.mechanic_immune_mask & (1 << 5)) != 0 OR (ct.mechanic_immune_mask & (1 << 7)) != 0 OR ct.rank = 3);"
-		query = WorldDBQuery("SELECT c.guid AS CreatureGUID, c.map AS CreatureMap, ct.name AS CreatureName FROM creature c JOIN creature_template ct ON c.id1 = ct.entry WHERE c.guid IN (" ..query_string .. ") AND ((ct.mechanic_immune_mask & (1 << 1)) != 0 OR (ct.mechanic_immune_mask & (1 << 5)) != 0 OR (ct.mechanic_immune_mask & (1 << 7)) != 0 OR ct.rank = 3);")
-		if query then -- cache the bosses
-			for x=1,query:GetRowCount(),1 do -- mythiclite_template_bosses[mapID] = ["IDs"] = {GUID1, GUID2, GUID3...}, ["Names"] = {Name1, Name2, Name3...}
-				local guid = query:GetUInt32(0)
-				local mapID = query:GetUInt32(1)
-				local name = query:GetString(2)
-				if (mythiclite_template_bosses[mapID] == nil) then
-					mythiclite_template_bosses[mapID] = {}
-				end
-				if (mythiclite_template_bosses[mapID]["IDs"] == nil) then
-					mythiclite_template_bosses[mapID]["IDs"] = {}
-				end
-				if (mythiclite_template_bosses[mapID]["Names"] == nil) then
-					mythiclite_template_bosses[mapID]["Names"] = {}
-				end
-				table.insert(mythiclite_template_bosses[mapID]["IDs"], guid)
-				table.insert(mythiclite_template_bosses[mapID]["Names"], name)
-				query:NextRow()
+	--local query = "SELECT c.guid AS CreatureGUID, c.map AS CreatureMap FROM creature c JOIN creature_template ct ON c.id1 = ct.entry WHERE c.guid IN (" ..query_string .. ") AND ((ct.mechanic_immune_mask & (1 << 1)) != 0 OR (ct.mechanic_immune_mask & (1 << 5)) != 0 OR (ct.mechanic_immune_mask & (1 << 7)) != 0 OR ct.rank = 3);"
+	query = WorldDBQuery("SELECT c.guid AS CreatureGUID, c.map AS CreatureMap, ct.name AS CreatureName FROM creature c JOIN creature_template ct ON c.id1 = ct.entry WHERE c.guid IN (" ..query_string .. ") AND ((ct.mechanic_immune_mask & (1 << 1)) != 0 OR (ct.mechanic_immune_mask & (1 << 5)) != 0 OR (ct.mechanic_immune_mask & (1 << 7)) != 0 OR ct.rank = 3);")
+	if query then -- cache the bosses
+		for x=1,query:GetRowCount(),1 do -- mythiclite_template_bosses[mapID] = ["IDs"] = {GUID1, GUID2, GUID3...}, ["Names"] = {Name1, Name2, Name3...}
+			local guid = query:GetUInt32(0)
+			local mapID = query:GetUInt32(1)
+			local name = query:GetString(2)
+			if (mythiclite_template_bosses[mapID] == nil) then
+				mythiclite_template_bosses[mapID] = {}
 			end
-			-- print the amount of bosses cached to which dungeon separately
-			print("[MythicLite.Lua] Collating boss data...")
-			for k,v in pairs(mythiclite_template_bosses) do
-				print("MapID:" .. k, "Bosses:" .. #v["IDs"])
+			if (mythiclite_template_bosses[mapID]["IDs"] == nil) then
+				mythiclite_template_bosses[mapID]["IDs"] = {}
 			end
-			print("[MythicLite.Lua] Boss data cached.")
-		else
-			print("[MythicLite.Lua] No boss data found. We can continue, but boss objectives will be disabled.")
-			MYTHIC_OBJECTIVES_BOSS = 0
+			if (mythiclite_template_bosses[mapID]["Names"] == nil) then
+				mythiclite_template_bosses[mapID]["Names"] = {}
+			end
+			-- if (mythiclite_template_bosses[mapID]["Alive"] == nil) then
+			-- 	mythiclite_template_bosses[mapID]["Alive"] = {}
+			-- end
+			table.insert(mythiclite_template_bosses[mapID]["IDs"], guid)
+			table.insert(mythiclite_template_bosses[mapID]["Names"], name)
+			--table.insert(mythiclite_template_bosses[mapID]["Alive"], true)
+			query:NextRow()
 		end
+		-- print the amount of bosses cached to which dungeon separately
+		print("[MythicLite.Lua] Collating boss data...")
+		for k,v in pairs(mythiclite_template_bosses) do
+			print("MapID:" .. k, "Bosses:" .. #v["IDs"])
+		end
+		print("[MythicLite.Lua] Boss data cached.")
 	else
-		print("[MythicLite.Lua] Boss objectives are disabled.")
+		print("[MythicLite.Lua] No boss data found. We can continue, but boss objectives will be disabled. Error Version 2.")
 	end
 	query = WorldDBQuery("SELECT creatureGUID, instanceID FROM eluna_mythiclite_progress;") -- cache the creature kills of the keystone
 	if query then -- mythiclite_progress = [instanceID] = {creatureGUID, creatureGUID2, creatureGUID3 ..}
@@ -771,10 +772,8 @@ function MythicLiteHandlers.MythicKill(player) -- any player is sending this whe
 				end
 			end
 
-			local prog_modifier = prog_modifier / 100 -- convert the totalMod to a percentage
 			local total_mobs = #mythiclite_template_mobs[player:GetMapId()] -- get the amount of total forces required
-			local req_kills = math.ceil(total_mobs * prog_modifier) -- modify the amount by the modifier
-
+			local req_kills = math.floor(total_mobs * (prog_modifier / 100.0)) -- modify the amount by the modifier
 			-- determine the current kills, assume 0 by default.
 			local current_kills = 0
 			if (mythiclite_progress[player:GetInstanceId()] ~= nil) then
@@ -782,6 +781,14 @@ function MythicLiteHandlers.MythicKill(player) -- any player is sending this whe
 			end
 
 			local new_progress = math.floor((current_kills / req_kills) * 100) -- the result here is the progression of the total forces requirement and is a whole integer
+
+			if (MYTHIC_OBJECTIVES_ENEMY_FORCES == 0) then -- determine if forces objective is enabled or not, if not then set the progress to 100
+				new_progress = 100
+			end
+
+			if new_progress > 100 then -- normalize the progress if it is over 100
+				new_progress = 100
+			end
 
 			-- is the killed unit a boss?
 			local is_boss = false
@@ -791,36 +798,73 @@ function MythicLiteHandlers.MythicKill(player) -- any player is sending this whe
 				end
 			end
 
-			if is_boss then -- update cache entry in relation to boss quantity
-				client_progress_cache[player:GetGUIDLow()]["boss_progress"] = client_progress_cache[player:GetGUIDLow()]["boss_progress"] + 1
+			if is_boss then -- if is_boss, then add the boss name to the table of strings in boss_progress
+				if (client_progress_cache[player:GetGUIDLow()]["boss_progress"] == nil) then
+					client_progress_cache[player:GetGUIDLow()]["boss_progress"] = {}
+				end
+				table.insert(client_progress_cache[player:GetGUIDLow()]["boss_progress"], creature:GetName())
+				--for k,v in pairs(client_progress_cache[player:GetGUIDLow()]["boss_progress"]) do -- print the boss_progress table for debug
+				--	print(v)
+				--end
+
+				-- send an AIO update to the client
+				local group = player:GetGroup()
+				if group then
+					for i = 1, group:GetMemberCount() , 1 do
+						local member = group:GetMember(i)
+						if member:GetMapId() == player:GetMapId() then
+							AIO.Handle(member, "Mythic_Lite", "ProgressUpdate", "skull", client_progress_cache[player:GetGUIDLow()]["boss_progress"])
+						end
+					end
+				else
+					AIO.Handle(player, "Mythic_Lite", "ProgressUpdate", "skull", client_progress_cache[player:GetGUIDLow()]["boss_progress"])
+				end
 			end
 
 			local list_of_players = {}
-			if (client_progress_cache[player:GetGUIDLow()]["progress"] ~= new_progress) and new_progress <= 100 then -- compare progress and if it is different, send the update to the player
+
+			if (client_progress_cache[player:GetGUIDLow()]["progress"] ~= new_progress) and client_progress_cache[player:GetGUIDLow()]["progress"] <= 100 then -- compare progress and if it is different and not finished, continue
 				client_progress_cache[player:GetGUIDLow()]["progress"] = new_progress -- update our cached entry of user progress
 				local group = player:GetGroup() -- send to group if available, else send to player
 				if group then -- perform loop on group if exists
 					for i = 1, group:GetMemberCount() , 1 do
 						local member = group:GetMember(i)
 						if member:GetMapId() == player:GetMapId() then
+							AIO.Handle(member, "Mythic_Lite", "ProgressUpdate", "bar", new_progress)
+						end
+						table.insert(list_of_players, member:GetGUIDLow())
+					end
+				else
+					table.insert(list_of_players, player:GetGUIDLow())
+					AIO.Handle(player, "Mythic_Lite", "ProgressUpdate", "bar", new_progress)
+				end
+			end
+
+			WorldDBQuery("UPDATE eluna_mythiclite_keystones SET progress = "..client_progress_cache[player:GetGUIDLow()]["progress"].." AND bosses = " .. client_progress_cache[player:GetGUIDLow()]["boss_progress"] .. " WHERE instanceID = " ..instanceID.. ";")
+
+			if (client_progress_cache[player:GetGUIDLow()]["progress"] ~= new_progress) then -- perform progress updates
+				client_progress_cache[player:GetGUIDLow()]["progress"] = new_progress
+				local group = player:GetGroup()
+				if group then
+					for i = 1, group:GetMemberCount() , 1 do
+						local member = group:GetMember(i)
+						if member:GetMapId() == player:GetMapId() then
 							AIO.Handle(member, "Mythic_Lite", "ProgressUpdate", new_progress, client_progress_cache[player:GetGUIDLow()]["boss_progress"])
 						end
-
-						-- get the GUID of member and cache it for later
 						table.insert(list_of_players, member:GetGUIDLow())
 					end
 				else
 					table.insert(list_of_players, player:GetGUIDLow())
 					AIO.Handle(player, "Mythic_Lite", "ProgressUpdate", new_progress, client_progress_cache[player:GetGUIDLow()]["boss_progress"])
 				end
+				WorldDBQuery("UPDATE eluna_mythiclite_keystones SET progress = "..client_progress_cache[player:GetGUIDLow()]["progress"].." AND bosses = " .. #client_progress_cache[player:GetGUIDLow()]["boss_progress"] .. " WHERE instanceID = " ..instanceID.. ";")
 			end
 
-			-- update the DB
-			WorldDBQuery("UPDATE eluna_mythiclite_keystones SET progress = "..client_progress_cache[player:GetGUIDLow()]["progress"].." AND bosses = " .. client_progress_cache[player:GetGUIDLow()]["boss_progress"] .. " WHERE instanceID = " ..instanceID.. ";")
-
 			-- check the win conditions in case it is victory
-			if client_progress_cache[player:GetGUIDLow()]["progress"] == 100 and client_progress_cache[player:GetGUIDLow()]["boss_progress"] == #mythiclite_template_bosses[mapID]["IDs"] then
-				-- victory
+			if client_progress_cache[player:GetGUIDLow()]["progress"] >= 100 and #client_progress_cache[player:GetGUIDLow()]["boss_progress"] >= #mythiclite_template_bosses[mapID]["IDs"] then
+			-- perform a boss and mob check separately 
+			
+			-- victory
 				player:SendBroadcastMessage("[MythicLite] You have completed the dungeon.")
 
 				-- if the player does not have a keystone, generate a new keystone. otherwise prompt the reroll generation to the player.
@@ -907,9 +951,12 @@ function MythicLiteHandlers.generateProgressCache(player)
 		if (v[1] == player:GetMapId()) then
 			prog_modifier = v[4]
 			dungeon_name = v[5]
-			timelimit = v[3]
+			timelimit = v[2]
 		end
 	end
+	print(prog_modifier)
+	print(timelimit)
+	print(dungeon_name)
 
 	local prog_modifier = prog_modifier / 100 -- convert the totalMod to a percentage
 	local total_mobs = #mythiclite_template_mobs[player:GetMapId()]
@@ -937,8 +984,8 @@ function MythicLiteHandlers.generateProgressCache(player)
 	-- send the string table of boss monsters
 	local bosses = mythiclite_template_bosses[player:GetMapId()]["Names"]
 
-	-- get the boss progress, determine 0 by default.
-	local boss_progress = 0
+	-- get the boss progress, determine empty set by default.
+	local boss_progress = {}
 
 	-- client_progress_cache[player:GetGUIDLow()] = {dungeon = dungeon_name, duration = timelimit, progress = progress, affixstring = affixstring, keystone_level = keystone_level, boss_progress = {boss_progress, boss_max}}
 	client_progress_cache[player:GetGUIDLow()] = {dungeon = dungeon_name, duration = timelimit, progress = progress, affixstring = affixstring, keystone_level = keystone_level, bosses = bosses, boss_progress = boss_progress}
@@ -1143,3 +1190,44 @@ local function Turn_ZeroSwitch_On(event, player)
 end
 
 RegisterPlayerEvent(28, Turn_ZeroSwitch_On)
+
+function MythicLiteHandlers.affixUnit(player)
+
+	local playerGUID = player:GetGUIDLow()
+	local affixString = ""
+	local affixStacks = {}
+	local keystoneLevel = 0
+	local target = player:GetSelection()
+
+	if target:HasAura(DUMMY_SPELL) then -- if target is already aura'd with the dummy aura, skip
+		return
+	end
+
+	-- if target is player then skip
+	if target:IsPlayer() then
+		return
+	end
+
+	for k,v in pairs(mythiclite_keystones) do
+		if (v[7] == player:GetInstanceId()) then
+			affixString = v[4]
+			keystoneLevel = v[2]
+		end
+	end
+
+	local affixes = {}
+	for word in affixString:gmatch("%w+") do -- break down the affixstring into individual spell IDs
+		table.insert(affixes, word)
+	end
+
+	-- loop through the affixes and apply them to the player target using wip_affixes_template[spellID]["base_stacks"] and wip_affixes_template[spellID]["stacks_per_level"] and wip_affixes_template[spellID]
+	for i = 1, #affixes do
+		local spellID = tonumber(affixes[i])
+		local base_stacks = wip_affixes_template[spellID]["base_stacks"]
+		local stacks_per_level = wip_affixes_template[spellID]["stacks_per_level"]
+		local stacks = base_stacks + (keystoneLevel * stacks_per_level)
+		target:AddAura(spellID, target) -- apply the aura to the target
+		target:GetAura(spellID):SetStackAmount(stacks)
+	end
+	target:AddAura(DUMMY_SPELL, target)
+end

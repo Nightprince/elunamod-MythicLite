@@ -102,6 +102,12 @@ local mapID_to_strings = { -- converts map IDs to strings for the client to prop
 	[724] = "The Ruby Sanctum"
 }
 
+local win_bools = {
+	["mobs"] = false,
+	["bosses"] = false,
+	["time"] = true -- always assume true until we hit the time limit in which case it is false
+}
+
 -- Create the main frame
 local mainframe = CreateFrame("Frame", "CustomItemDropFrame", UIParent)
 mainframe:SetSize(300, 450) -- Set the size of the frame
@@ -1044,11 +1050,41 @@ StopwatchFrame:SetScript("OnMouseDown", nil)
 StopwatchFrame:SetScript("OnMouseUp", nil)
 StopwatchFrame:SetMovable(false)
 
-local function StartCustomTimer(duration) -- Start a 60-second timer with hidden controls
-    Stopwatch_Clear()
-    Stopwatch_StartCountdown(0, 0, duration)
-    Stopwatch_Play()
+local countdownTime = 0 -- Define the time in seconds for the countdown
+local remainingTime = countdownTime
+local running = false
+
+-- Function to update the StopwatchFrame for counting down
+local function UpdateStopwatch(self, elapsed)
+    if running then
+        remainingTime = remainingTime - elapsed
+        if remainingTime <= 0 then
+            running = false
+            remainingTime = 0
+            Stopwatch_Clear() -- Stops the Stopwatch when countdown reaches 0
+			win_bools["time"] = false -- we have reached 0 on our timer so we have lost our mythic dungeon
+			print("[MythicLite]: You have ran out of time and failed your Mythic Keystone. You can complete this dungeon but your Mythic Keystone will not gain any levels.")
+        end
+        -- Update the time on the StopwatchFrame to reflect the countdown
+        StopwatchTicker.timer = remainingTime
+    end
 end
+
+-- Start the countdown using the base StopwatchFrame
+local function StartCountdown(duration)
+    remainingTime = duration
+    running = true
+    StopwatchFrame:Show() -- Ensure the frame is visible
+	Stopwatch_Clear() -- hide controls
+	Stopwatch_StartCountdown(0, 0, duration)
+	Stopwatch_Play()
+end
+
+local function StopCountdown() -- Stop the countdown
+    running = false
+end
+
+StopwatchFrame:SetScript("OnUpdate", UpdateStopwatch) -- Hook the OnUpdate script to constantly check and update the countdown
 
 -- texture icon of the keystone item and the keystone level text string
 local mythiclvl_texture = StopwatchFrame:CreateTexture(nil, "ARTWORK")
@@ -1082,12 +1118,6 @@ bar_container:SetBackdrop({
     insets = { left = 11, right = 12, top = 12, bottom = 11 }
 })
 
--- create a generic blue progress bar with text overlaid like "50 %" and create a texture frame that would appropriately pair well with the progress bar. put like vertical bar aesthetic on it like any other wow progress bar.
-local texture = bar_container:CreateTexture(nil, "BACKGROUND")
-texture:SetSize(133, 20)
-texture:SetPoint("LEFT", bar_container, "LEFT", 5, 0)
-texture:SetTexture("Interface\\TargetingFrame\\UI-StatusBar")
-
 local statusbar = CreateFrame("StatusBar", nil, bar_container)
 statusbar:SetSize(bar_container:GetWidth() - 23, bar_container:GetHeight() - 23)
 statusbar:SetPoint("LEFT", bar_container, "LEFT", 11, -1)
@@ -1120,54 +1150,12 @@ end)
 local boss_progress_container = CreateFrame("Frame", "BossProgressContainer", prog)
 boss_progress_container:SetSize(bar_container:GetWidth(), math.floor(bar_container:GetHeight() / 2))
 boss_progress_container:SetPoint("BOTTOM", prog, "BOTTOM", 0, 15)
---boss_progress_container:SetBackdrop({
---	bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
---	edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
---	tile = true, tileSize = 32, edgeSize = 32,
---	insets = { left = 11, right = 12, top = 12, bottom = 11 }
---})
 
--- create a texture of the generic party leader crown icon
--- local crown_texture = boss_progress_container:CreateTexture(nil, "ARTWORK")
--- crown_texture:SetSize(16, 16)
--- crown_texture:SetPoint("CENTER", boss_progress_container, "CENTER", 0, 0)
--- crown_texture:SetTexture("Interface\\GroupFrame\\UI-Group-LeaderIcon")
-
--- create a texture of a generic skull for the boss icon
--- local boss_texture = boss_progress_container:CreateTexture(nil, "ARTWORK")
--- boss_texture:SetSize(16, 16)
--- boss_texture:SetPoint("RIGHT", crown_texture, "RIGHT", crown_texture:GetWidth() + 5, 0)
--- boss_texture:SetTexture("Interface\\TargetingFrame\\UI-TargetingFrame-Skull")
-
-
--- local boss_progress_text = boss_progress_container:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
--- boss_progress_text:SetPoint("CENTER", boss_progress_container, "CENTER", 0, 0)
--- boss_progress_text:SetText("Boss Progress: 0/5")
-
--- set script on enter, show a cached string list of boss names
---boss_progress_container:EnableMouse(true)
---boss_progress_container:SetScript("OnEnter", function(self)
---	GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
---	GameTooltip:SetText("Boss Progress: 0/5")
---	GameTooltip:AddLine("Boss 1: Boss Name")
---	GameTooltip:AddLine("Boss 2: Boss Name")
---	GameTooltip:AddLine("Boss 3: Boss Name")
---	GameTooltip:AddLine("Boss 4: Boss Name")
---	GameTooltip:AddLine("Boss 5: Boss Name")
---	GameTooltip:Show()
---end)
---boss_progress_container:SetScript("OnLeave", function(self)
---	GameTooltip:Hide()
---end)
-
-
--- set prog.title parent to statusbar
-prog.Title:SetParent(bar_container)
-
---container:SetPoint("CENTER", affix_container, "CENTER", -30, 0) --repoint the stopwatch parent container since the objects necessary are now made
+prog.Title:SetParent(bar_container) -- set prog.title parent to statusbar
 prog:Hide() -- hide the prog frame
 
 local switchframe = CreateFrame("Frame")
+local unit_cache = {} -- {guid1, guid2, guid3}
 function MythicLiteHandlers.Prog_Switch(player, state)
 	print("rcvd prog switch" .. state)
 	if state == "on" then
@@ -1192,12 +1180,28 @@ function MythicLiteHandlers.Prog_Switch(player, state)
 				-- 	print("YES")
 				-- end
 
+				-- cache the specific unit GUID and if its not in the cache, perform an AIO to the server with the unit GUID.
+				local unit = UnitGUID("target")
+				if unit == nil or UnitGUID("player") == unit then
+					return
+				end
+				local found_in_cache = false
+				for i, v in ipairs(unit_cache) do
+					if v == unit then
+						found_in_cache = true
+					end
+				end
+				if found_in_cache == false then
+					AIO.Handle("Mythic_Lite", "affixUnit")
+					unit_cache[#unit_cache + 1] = unit
+				end
 			end
 		end)
 		AIO.Handle("Mythic_Lite", "generateProgressCache") -- request the initial dataset for the progress UI
 	elseif state == "off" then
 		switchframe:UnregisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 		switchframe:UnregisterEvent("PLAYER_TARGET_CHANGED")
+		prog:Hide() -- hide prog
 	end
 end
 
@@ -1219,6 +1223,7 @@ function MythicLiteHandlers.Zero_Switch(player, state) -- handler for progressin
 end
 
 local boss_max = 0
+local boss_skulls = {} -- table of boss skull button objects. ["boss_name"] = bossButton
 function MythicLiteHandlers.ProgressInit(player, client_progress_cache) -- receives client_progress_cache. {dungeon_name, timelimit, progress, affixstring, keystone_level, bosses, boss_progress}
 	-- break down the data and define it for the script usage
 	local dungeon = client_progress_cache["dungeon"]
@@ -1226,12 +1231,17 @@ function MythicLiteHandlers.ProgressInit(player, client_progress_cache) -- recei
 	local progress = client_progress_cache["progress"]
 	local affixstring = client_progress_cache["affixstring"]
 	local keystone_level = client_progress_cache["keystone_level"]
-	local boss_progress = client_progress_cache["boss_progress"] -- integer value of how many bosses have been killed in the dungeon.
+	local boss_progress = client_progress_cache["boss_progress"] -- a table of strings that are then compared to the bosses table to decide which ones are progressed or not
 	boss_max = #client_progress_cache["bosses"] -- integer value of how many bosses are in the dungeon. taken from a table of string names of the bosses.
 
-	-- set the progress bar to the appropriate values
-	prog:Show()
-	StartCustomTimer(duration)
+	prog:Show() -- show the prog main frame
+	StartCountdown(duration)
+
+	-- normalize progress if over 100
+	if progress > 100 then
+		progress = 100
+	end
+
 	statusbar:SetValue(tonumber(progress))
 	statusbarText:SetText(tostring(progress) .. "%")
 	prog.Title:SetText(dungeon)
@@ -1316,7 +1326,7 @@ function MythicLiteHandlers.ProgressInit(player, client_progress_cache) -- recei
 
 	crownButton:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-		GameTooltip:SetText("Bosses killed: " .. client_progress_cache["boss_progress"] .. "/" .. boss_max)
+		GameTooltip:SetText("Bosses killed: " .. #client_progress_cache["boss_progress"] .. "/" .. boss_max)
 		GameTooltip:Show()
 	end)
 	crownButton:SetScript("OnLeave", function(self)
@@ -1345,35 +1355,51 @@ function MythicLiteHandlers.ProgressInit(player, client_progress_cache) -- recei
 			GameTooltip:Hide()
 		end)
 		xOffset = xOffset + crownButton:GetWidth() + 5
+
+		-- make a red X overlaid on the button to indicate the boss is dead, but hide it for later.
+		local xTexture = bossButton:CreateTexture(nil, "OVERLAY")
+		xTexture:SetSize(16, 16)
+		xTexture:SetPoint("CENTER", bossButton, "CENTER", 0, 0)
+		xTexture:SetTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
+		xTexture:SetVertexColor(1, 0, 0, 1)
+		xTexture:Hide()
+
+		-- put the button and "X" progress texture in an array named after the boss to be targeted later
+		boss_skulls[client_progress_cache["bosses"][i]] = {bossButton, xTexture}
 	end
 end
 
-local win_bools = {
-	["mobs"] = false,
-	["bosses"] = false,
-	["time"] = false
-}
-
-function MythicLiteHandlers.ProgressUpdate(player, value, boss_counter) -- update the progress bar value and text
-	print("value:" .. value)
-
-	if value >= 100 and win_bools["mobs"] == false then
-		win_bools["mobs"] = true
-		print("Mobs condition met!")
+function MythicLiteHandlers.ProgressUpdate(player, type, value) -- update the progress on the relevant frames based on the type of update being sent to the client. type = "bar", "skull", "time"
+	print("rcvd", type, value)
+	if type == "bar" then
+		if value > 100 then -- normalize the value
+			value = 100
+		end
+		if value >= 100 and win_bools["mobs"] == false then
+			win_bools["mobs"] = true
+		end
+		if value > 0 and value <= 100 and statusbar:GetValue() ~= 100 then
+			statusbar:SetValue(tonumber(value))
+			statusbarText:SetText(tostring(value) .. "%")
+		end
+	elseif type == "skull" then
+		-- value is expecting to be a table of strings, ie : {"boss_name", "boss_name", "boss_name"}
+		for i = 1, #value do
+			if boss_skulls[value[i]] ~= nil then
+				boss_skulls[value[i]][2]:Show()
+			end
+		end
+		-- if amount of boss names is >= than the known maximum amount of bosses, then boss victory is true
+		if #value >= boss_max and win_bools["bosses"] == false then
+			win_bools["bosses"] = true
+			print("bosses killed!")
+		end
+	elseif type == "time" then
+		if value == 0 and win_bools["time"] == false then
+			win_bools["time"] = true
+			print("Time condition met!")
+		end
 	end
-
-	if value > 0 and value <= 100 then
-		statusbar:SetValue(tonumber(value))
-		statusbarText:SetText(tostring(value) .. "%")
-		print("progressing mob condition")
-	end
-
-	if boss_counter >= boss_max and win_bools["bosses"] == false then
-		win_bools["bosses"] = true
-		print("Bosses condition met!")
-	end
-
-	-- loop through the win bools and if all are true, determine victory true
 
 	for k, v in pairs(win_bools) do
 		if v == false then
