@@ -1,11 +1,7 @@
-# elunamod-MythicLite
-
-The following is copy and pasted from the MythicLite feature document. You can access said document with live updates here - https://docs.google.com/document/d/1lO2vt7rZNwL6at2UXp9UDQ9XhAFRmqIbkwhJ2pxX-rM/edit?usp=sharing
-
-MythicLite™
+###MythicLite™
 This is the formal documentation sheet for the MythicLite feature.
 
-Installation
+#Installation
 MythicLite requires the following assets -
 
 AIO by Rochet2
@@ -36,7 +32,7 @@ eluna_mythiclite_records
 eluna_counters
 
 Once you have ran and installed the contents of the SQL file, restart your server and your client.
-Configuration
+#Configuration
 This section contains documentation on variables, configurations, and what the user installing this feature can change.
 Server_MythicLite.lua
 
