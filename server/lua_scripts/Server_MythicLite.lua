@@ -40,10 +40,10 @@ local AFFIX_STEP = 3 -- after how many levels the possible affixes increase
 local AFFIX_STEP_AMOUNT = 1 -- how many affixes you would like per step
 local AFFIX_BASE = 7 -- how many affixes every keystone starts with
 
-local REPICK_COST = 1000 -- how much it costs to repick a keystone in currency
-local REPICK_ITEM = 0 -- the item required to repick a keystone
-local REPICK_ITEM_QUANTITY = 1 -- how many of the item is required to repick a keystone
-local REPICK_MAX = 3 -- how many times one keystone can be rerolled / repicked
+local REPICK_COST = 1000 -- how much it costs to repick a keystone in currency. 0 = disabled.
+local REPICK_ITEM = 1999921 -- the item required to repick a keystone
+local REPICK_ITEM_QUANTITY = 2 -- how many of the item is required to repick a keystone. set 0 = disabled.
+local REPICK_MAX = 3 -- how many times one keystone can be rerolled / repicked. 0 = disables repicks entirely.
 local REPICK_MOD_LEVEL = 1 -- the cost modifier for both currency and item quantity based on the keystones item level
 local REPICK_MOD_STACKING = 1 -- the cost modifier for both currency and item quantity based on the amount of times the keystone has been rerolled / repicked. 0 = no stacking costs. 1 = a stacking cost rate of 1.0. ie (1000 * 1) + the_last_cost = new_cost
 
@@ -82,6 +82,16 @@ WHERE ct.faction NOT IN (35, 31);
 local DUMMY_SPELL = 3000032 -- the dummy spell we will use to ignore creatures that are parsed for the progression checks.
 
 client_progress_cache = {} -- the client-side needs info for the UI to be displayed properly. this is the object that holds that info and is sent to the client. client_progress_cache[player:GetDBTableGUIDLow()] = {name of the dungeon related to the keystone, timelimit from mythic template, progress, affixstring, keystone_level}
+
+local repick_data = {} -- contains info related to repicking keystones
+-- repick_data[playerGUID] = 0, -- amount of repicks used at the time a keystone is rerolled and then offered
+repick_data["config"] = {}
+repick_data["config"]["REPICK_COST"] = REPICK_COST
+repick_data["config"]["REPICK_ITEM"] = REPICK_ITEM
+repick_data["config"]["REPICK_ITEM_QUANTITY"] = REPICK_ITEM_QUANTITY
+repick_data["config"]["REPICK_MAX"] = REPICK_MAX
+repick_data["config"]["REPICK_MOD_LEVEL"] = REPICK_MOD_LEVEL
+repick_data["config"]["REPICK_MOD_STACKING"] = REPICK_MOD_STACKING
 
 function generateUniqueRolls(count, maxValue)
 	-- Example usage
@@ -582,6 +592,8 @@ local function keystoneOnLogin(event, player)
 	AIO.Handle(player, "Mythic_Lite", "ReceiveKeystones", mythiclite_keystones)
 	AIO.Handle(player, "Mythic_Lite", "ReceiveMyKeystone", playerKeystone)
 	AIO.Handle(player, "Mythic_Lite", "ReceiveAffixStacks", mythiclite_affixes_template)
+	-- send/receive repick values
+	AIO.Handle(player, "Mythic_Lite", "ReceiveCfgRepick", repick_data["config"])
 end
 
 
@@ -725,7 +737,6 @@ function MythicLiteHandlers.ZeroKill(player) -- any player is sending this when 
 		AIO.Handle(player, "Mythic_Lite", "Zero_Switch", "off")
 	end
 end
-
 
 function MythicLiteHandlers.MythicKill(player) -- any player is sending this when a unit dies in their combat log and a player has started a mythic dungeon
 	-- check for nearby units that are not yet included in the mythiclite_progress[instanceID] table.
@@ -934,6 +945,10 @@ function MythicLiteHandlers.generateKeystoneCache(player) -- sends and regenerat
 	AIO.Handle(player, "Mythic_Lite", "ReceiveKeystones", mythiclite_keystones)
 end
 
+function MythicLiteHandlers.generateCfgRepick(player) -- sends and regenerates the client-side cache to the client. currently sends the entire repick_data object
+	AIO.Handle(player, "Mythic_Lite", "ReceiveCfgRepick", repick_data["config"])
+end
+
 function MythicLiteHandlers.generateAffixStacks(player) -- sends and regenerates the client-side cache to the client. currently sends the entire mythiclite_affixes_template object
 	AIO.Handle(player, "Mythic_Lite", "ReceiveAffixStacks", mythiclite_affixes_template)
 end
@@ -1014,6 +1029,8 @@ function MythicLiteHandlers.rerollCancel(player) -- find the player in the await
 		end
 	end
 	player:SendBroadcastMessage("[MythicLite] You have cancelled your reroll request.")
+	-- set the reroll data of the player to nil
+	repick_data[player:GetGUIDLow()] = nil
 	AIO.Handle(player, "Mythic_Lite", "CloseFrame")
 	return
 end
@@ -1230,4 +1247,63 @@ function MythicLiteHandlers.affixUnit(player)
 		target:GetAura(spellID):SetStackAmount(stacks)
 	end
 	target:AddAura(DUMMY_SPELL, target)
+end
+
+function MythicLiteHandlers.repickMyKeystone(player)
+	-- check repick_data[player:GetDBTableGUIDLow()] and if nil then this is the first reroll. insert 1 into the table. perform generateKeystone.
+	-- if not nil, then check if greater than REPICK_MAX. if not, increment by 1 and perform generateKeystone. if greater than REPICK_MAX, send a message to the player.
+	local playerGUID = player:GetGUIDLow()
+
+	if REPICK_MAX == 0 then -- determine if rerolls are even enabled via max_repick
+		player:SendBroadcastMessage("[MythicLite] Rerolls are disabled.")
+		return
+	end
+
+	local rolls = 0 -- get previous rolls if any exist
+
+	if repick_data[playerGUID] == nil then
+		repick_data[playerGUID] = 0
+	else
+		rolls = repick_data[playerGUID]
+	end
+
+	local item_cost = 0 -- determine cost values if they are enabled, item quantity, item, and money costs.
+	local money_cost = 0
+	local item = 0
+
+	if REPICK_ITEM_QUANTITY > 0 then
+		-- item_cost = REPICK_ITEM_QUANTITY + (REPICK_MOD_LEVEL * keystoneLevel) + (REPICK_MOD_STACKING * rolls)
+		item_cost = REPICK_ITEM_QUANTITY + (REPICK_MOD_STACKING * rolls)
+		item = REPICK_ITEM
+	end
+	if REPICK_COST > 0 then
+		-- money_cost = REPICK_COST + (REPICK_MOD_LEVEL * keystoneLevel) + (REPICK_MOD_STACKING * repick_data[playerGUID])
+		money_cost = REPICK_COST + (REPICK_MOD_STACKING * rolls)
+	end
+
+	-- determine if the player has the item quantity and item, if not, send a message and return. check for money cost as well.
+	if item_cost > 0 and not player:HasItem(item, item_cost) then
+		player:SendBroadcastMessage("[MythicLite] You do not have enough items to reroll your keystone.")
+		return
+	end
+
+	if money_cost > 0 and player:GetCoinage() < money_cost then
+		player:SendBroadcastMessage("[MythicLite] You do not have enough money to reroll your keystone.")
+		return
+	end
+
+	if rolls >= REPICK_MAX then
+		player:SendBroadcastMessage("[MythicLite] You have reached the maximum amount of rerolls.")
+		return
+	end
+
+	repick_data[playerGUID] = rolls + 1
+	MythicLiteHandlers.rerollMyKeystone(player)
+	-- remove costs from player
+	if item_cost > 0 then
+		player:RemoveItem(player:GetItemByEntry(item), item_cost)
+	end
+	if money_cost > 0 then
+		player:ModifyMoney(-money_cost)
+	end
 end

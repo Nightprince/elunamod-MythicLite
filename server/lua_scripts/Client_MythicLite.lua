@@ -108,6 +108,8 @@ local win_bools = {
 	["time"] = true -- always assume true until we hit the time limit in which case it is false
 }
 
+local cfg_repick = {}
+
 -- Create the main frame
 local mainframe = CreateFrame("Frame", "CustomItemDropFrame", UIParent)
 mainframe:SetSize(300, 450) -- Set the size of the frame
@@ -411,6 +413,25 @@ function MythicLiteHandlers.ReceiveMyKeystone(player, keystone) -- receive keyst
 	]]
 	myKeystone = keystone
 	player_guid = keystone[1]
+end
+
+function MythicLiteHandlers.ReceiveCfgRepick(player, repick_data)
+
+	-- receiving data
+	--  {
+	-- ["REPICK_COST"] = REPICK_COST
+	-- ["REPICK_ITEM"] = REPICK_ITEM
+	-- ["REPICK_ITEM_QUANTITY"] = REPICK_ITEM_QUANTITY
+	-- ["REPICK_MAX"] = REPICK_MAX
+	-- ["REPICK_MOD_LEVEL"] = REPICK_MOD_LEVEL
+	-- ["REPICK_MOD_STACKING"] = REPICK_MOD_STACKING
+	--	}
+
+	-- define the data
+	for k, v in pairs(repick_data) do
+		cfg_repick[k] = v
+		--print(k, v)
+	end
 end
 
 function MythicLiteHandlers.OpenFrame(player) -- open the frame
@@ -738,6 +759,25 @@ confirmButton:SetScript("OnClick", function(self)
 	AIO.Handle("Mythic_Lite", "rerollConfirm")
 end)
 
+-- repick offer button
+local repickButton = CreateFrame("Button", nil, containerNewKey, "UIPanelButtonTemplate")
+repickButton:SetSize(100, 30)
+repickButton:SetPoint("BOTTOM", containerNewKey, "BOTTOM", 0, 60)
+repickButton:SetText("Reroll")
+--repickButton:SetScript("OnClick", function(self)
+--	print("w")
+--	MythicLiteHandlers.POPUP_REPICK(nil)
+--	print("bv")
+--end)
+repickButton:SetScript("OnEnter", function(self)
+	GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+	GameTooltip:SetText("Repicks the newly offered Mythic Keystone")
+	GameTooltip:Show()
+end)
+repickButton:SetScript("OnLeave", function(self)
+	GameTooltip:Hide()
+end)
+
 -- NEW KEY END
 --
 --
@@ -783,6 +823,60 @@ function MythicLiteHandlers.POPUP_REROLL(player)
 	preferredIndex = 3,  -- avoid some UI taint, see http://www.wowace.com/announcements/how-to-avoid-some-ui-taint/
 	}
 	StaticPopup_Show("CONFIRM_REROLL")
+end
+
+function MythicLiteHandlers.POPUP_REPICK()
+	-- data check if cfg_repick is nil first before continuing
+	if cfg_repick["REPICK_MAX"] == nil then
+		print("[MythicLite]: There was an error in requesting the repick data. A request to the server was made. Please try again.")
+		AIO.Handle("Mythic_Lite", "generateCfgRepick")
+		return
+	end
+
+	local cost_string = "You are about to "
+
+	local free = false
+	-- determine if free or not
+	if cfg_repick["REPICK_COST"] == 0 and cfg_repick["REPICK_ITEM_QUANTITY"] == 0 then
+		free = true
+	end
+
+	-- if money is enabled, append it to our cost string
+	if free == false then
+		cost_string = cost_string .. "spend "
+
+		if cfg_repick["REPICK_COST"] > 0 then
+			cost_string = cost_string .. "" .. cfg_repick["REPICK_COST"] .. " gold"
+		end
+
+		if cfg_repick["REPICK_COST"] > 0 and cfg_repick["REPICK_ITEM_QUANTITY"] > 0 then
+			cost_string = cost_string .. " and "
+		end
+
+		-- if item is enabled, append it to our cost string
+		if cfg_repick["REPICK_ITEM_QUANTITY"] > 0 then
+			local itemName, itemLink = GetItemInfo(cfg_repick["REPICK_ITEM"])
+			cost_string = cost_string .. "" .. cfg_repick["REPICK_ITEM_QUANTITY"] .. " " .. itemLink .. ""
+		end
+
+		cost_string = cost_string .. " by repicking your keystone. Are you sure you want to continue?"
+	end
+
+	StaticPopupDialogs["CONFIRM_REPICK"] = {
+	text = cost_string,
+	button1 = "Continue",
+	button2 = "Decline",
+	OnAccept = function()
+		AIO.Handle("Mythic_Lite", "repickMyKeystone")
+	end,
+	OnDecline = function()
+	end,
+	timeout = 0,
+	whileDead = false,
+	hideOnEscape = true,
+	preferredIndex = 3,  -- avoid some UI taint, see http://www.wowace.com/announcements/how-to-avoid-some-ui-taint/
+	}
+	StaticPopup_Show("CONFIRM_REPICK")
 end
 
 -- the server is doing the following - 
@@ -1157,7 +1251,7 @@ prog:Hide() -- hide the prog frame
 local switchframe = CreateFrame("Frame")
 local unit_cache = {} -- {guid1, guid2, guid3}
 function MythicLiteHandlers.Prog_Switch(player, state)
-	print("rcvd prog switch" .. state)
+	-- print("rcvd prog switch" .. state)
 	if state == "on" then
 		switchframe:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 		switchframe:RegisterEvent("PLAYER_TARGET_CHANGED")
@@ -1207,7 +1301,7 @@ end
 
 local ZeroSwitchFrame = CreateFrame("Frame")
 function MythicLiteHandlers.Zero_Switch(player, state) -- handler for progressing a dungeon that is not a keystone mythic but can generate a mythic keystone. switched to on when a player changes zone into a valid dungeon. switched to off when a player starts a keystone.
-	print("rcvd zero switch" .. state)
+	-- print("rcvd zero switch" .. state)
 	if state == "on" then
 		ZeroSwitchFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 		ZeroSwitchFrame:SetScript("OnEvent", function(self, event, timestamp, combat_event)
@@ -1370,7 +1464,7 @@ function MythicLiteHandlers.ProgressInit(player, client_progress_cache) -- recei
 end
 
 function MythicLiteHandlers.ProgressUpdate(player, type, value) -- update the progress on the relevant frames based on the type of update being sent to the client. type = "bar", "skull", "time"
-	print("rcvd", type, value)
+	-- print("rcvd", type, value)
 	if type == "bar" then
 		if value > 100 then -- normalize the value
 			value = 100
@@ -1392,12 +1486,12 @@ function MythicLiteHandlers.ProgressUpdate(player, type, value) -- update the pr
 		-- if amount of boss names is >= than the known maximum amount of bosses, then boss victory is true
 		if #value >= boss_max and win_bools["bosses"] == false then
 			win_bools["bosses"] = true
-			print("bosses killed!")
+			-- print("bosses killed!")
 		end
 	elseif type == "time" then
 		if value == 0 and win_bools["time"] == false then
 			win_bools["time"] = true
-			print("Time condition met!")
+			-- print("Time condition met!")
 		end
 	end
 
@@ -1426,3 +1520,7 @@ function MythicLiteHandlers.CloseFrame(player) -- close all frames
 	mainframe:Hide()
 	rerollParent:Hide()
 end
+
+repickButton:SetScript("OnClick", function(self)
+	MythicLiteHandlers.POPUP_REPICK()
+end)
