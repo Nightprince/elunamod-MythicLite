@@ -1,7 +1,7 @@
-###MythicLite™
+# MythicLite™
 This is the formal documentation sheet for the MythicLite feature.
 
-#Installation
+# Installation
 MythicLite requires the following assets -
 
 AIO by Rochet2
@@ -32,7 +32,7 @@ eluna_mythiclite_records
 eluna_counters
 
 Once you have ran and installed the contents of the SQL file, restart your server and your client.
-#Configuration
+# Configuration
 This section contains documentation on variables, configurations, and what the user installing this feature can change.
 Server_MythicLite.lua
 
