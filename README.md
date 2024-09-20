@@ -1,11 +1,7 @@
-# elunamod-MythicLite
-
-The following is copy and pasted from the MythicLite feature document. You can access said document with live updates here - https://docs.google.com/document/d/1lO2vt7rZNwL6at2UXp9UDQ9XhAFRmqIbkwhJ2pxX-rM/edit?usp=sharing
-
-MythicLite™
+# MythicLite™
 This is the formal documentation sheet for the MythicLite feature.
 
-Installation
+# Installation
 MythicLite requires the following assets -
 
 AIO by Rochet2
@@ -36,7 +32,7 @@ eluna_mythiclite_records
 eluna_counters
 
 Once you have ran and installed the contents of the SQL file, restart your server and your client.
-Configuration
+# Configuration
 This section contains documentation on variables, configurations, and what the user installing this feature can change.
 Server_MythicLite.lua
 
@@ -162,7 +158,7 @@ local mapID_to_strings = {
 	Here is a SQL command you can run that will allow you to easily capture the map names in relation to the IDs
 
 	SELECT ID, mapname_lang_enus FROM map_dbc WHERE instancetype > 0;
-SQL Database
+# SQL Database
 
 [SQL] eluna_mythiclite_template
 
@@ -207,10 +203,10 @@ Contains information related to finished mythic dungeons.
 
 eluna_counters
 I have a generic “counters” table in my own personal SQL database. This is where I’ve placed things like the affix generation timestamp. All the values found here should also contain a readable comment.
-Logic
+# Logic
 
 This section will be describing the logic process of the MythicLite features, how it all works, and how to interact with it.
-Getting a Keystone
+## Getting a Keystone
 
 You first need to acquire a zero mythic keystone. To do so, kill all bosses in any of the dungeons listed in the mythiclite_template table. The configuration values, MYTHIC_ZERO_NORMAL and MYTHIC_ZERO_HEROIC, decide which dungeon mode(s) allow the initial zero mythic keystone. The configuration values MYTHIC_HEROIC and MYTHIC_NORMAL, decide which dungeon mode(s) allow a player to level up their mythic keystone at the end of the dungeon.
 
@@ -219,7 +215,7 @@ Affixes or selection of auras based on the above configuration values
 Map that the keystone works in
 Keystone Level that affects the amount of affixes based on the above configuration values. Keystone Level also affects the reroll cost and timer durations if applicable.
 Right-click to generate a chat link that can be shared with others. Other people will not be able to see the attributes tied to a keystone unless you use this link.
-Using a Keystone
+## Using a Keystone
 
 The keystone you have now acquired can be used on any mythic pedestal gameobject. This does mean you will have to manually spawn these inside the dungeons you desire. You can do so with the command, `.gameobject spawn <MYTHIC_PEDESTAL_ENTRY>`. The pedestal is now permanent and should never disappear.
 
@@ -238,14 +234,14 @@ Starting a Keystone
 After pressing the start button, a timer lasting MYTHIC_START_TIMER seconds begins. When this timer starts, all players inside the dungeon are teleported to the start of the dungeon. The coordinates for this teleport are gathered from the SQL table, areatrigger_teleport, which should come with your AzerothCore database. 
 
 A forcefield is then spawned around the group that lasts the duration mentioned above. A visual countdown appears to all players, counting the whole numbers down until the timer expires. On finishing, the forcefield despawns, all creatures are buffed with the aforementioned affixes, and all players are permitted to progress the keystone further.
-Progressing a Keystone
+## Progressing a Keystone
 
 In order to progress a Mythic Keystone, the dungeon must be finished within the timer specified in the SQL table, eluna_mythiclite_template. A dungeon is considered finished when the last boss of the dungeon is killed.
 
 If MYTHIC_OBJECTIVES_ENEMY_FORCES is enabled, players are given a progress bar indicating they must kill creatures to fill this bar. This bar’s maximum value is ALL the creatures within the dungeon. The server then takes the totalMod value from the SQL table eluna_mythiclite_template, converts it into a percentage (ie: 1 = 1%), and multiplies the amount of forces required by that amount. So for example, if the dungeon happens to require 100 creatures killed, then a totalMod value of 1 would require only 1 of those creatures to be killed.
 
 If MYTHIC_OBJECTIVES_BOSS is enabled alongside the enemy forces objective requirement, then players must also kill all bosses within the dungeon. Players are sent skulls indicating the names and progress of these bosses. This requirement is in addition to the forces and time requirements.
-Winning a Keystone
+## Winning a Keystone
 
 Once all victory conditions have been met, players are then given their own keystone. If the dungeon is beat within the time limit, the keystone increments by KEYSTONE_LEVEL_STEP levels. So if the value were 1, then the key would increment by 1 level for finishing the victory conditions.
 
@@ -263,7 +259,7 @@ When REPICK_MOD_LEVEL is set to a value greater than 0, the cost of the keystone
 If REPICK_MOD_STACKING is set to a value greater than 0, then repicking a keystone adds a stacking cost based on the amount of rerolls performed by the player in that session. For example, if a player has performed three rerolls and the original cost is 5 money, then a REPICK_MOD_STACKING of 1 would make the 4th roll cost 9 money.
 
 Players can reroll their keystone to a maximum of REPICK_MAX times per reroll session.
-Technical Breakdown
+# Technical Breakdown
 Here’s a brief explanation of nerd shit.
 
 The server starts and loads all the aforementioned information in a cache. On player login, the server sends the cache. The players should be able to tooltip over the items by this point with the cached data and read them properly. Players can now enter any zero dungeon, in which the server will send an “on” state to a zero kill switch. Players progress an invisible boss progression and on completion, are rewarded with a keystone. On placing a keystone the affix information and keystone information is provided. On starting it, players are teleported and a switch is turned to “on” state for mythic kill tracking and the zero kill switch is turned “off”. Player kills are now sent to the server and ask for progression updates in relation to the mythic data. This switch also is fired on target swapping, which determines if the target needs affixes applied or not. Because there is no native way to grab all dungeon creatures, this was the best temporary solution I could find - the creatures are compared to a local array and if they are not buffed and are not in said array, then insert and tell the server to buff that creature.
