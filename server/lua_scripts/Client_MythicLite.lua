@@ -1503,16 +1503,16 @@ function MythicLiteHandlers.ProgressUpdate(player, type, value) -- update the pr
 	end
 	print("winner chicken dinner!")
 
-	local fadeout = prog:CreateAnimationGroup()
-	local fade = fadeout:CreateAnimation("Alpha")
-	fade:SetFromAlpha(1)
-	fade:SetToAlpha(0)
-	fade:SetDuration(5)
-	fade:SetOrder(1)
-	fadeout:SetScript("OnFinished", function(self)
-		prog:Hide()
-	end)
-	fadeout:Play()
+	--local fadeout = prog:CreateAnimationGroup()
+	--local fade = fadeout:CreateAnimation("Alpha")
+	--fade:SetFromAlpha(1)
+	--fade:SetToAlpha(0)
+	--fade:SetDuration(5)
+	--fade:SetOrder(1)
+	--fadeout:SetScript("OnFinished", function(self)
+	--	prog:Hide()
+	--end)
+	--fadeout:Play()
 	print("Congratulations, you won!")
 end
 
@@ -1524,3 +1524,8 @@ end
 repickButton:SetScript("OnClick", function(self)
 	MythicLiteHandlers.POPUP_REPICK()
 end)
+
+-- hide all the frames
+mainframe:Hide()
+rerollParent:Hide()
+prog:Hide()

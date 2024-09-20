@@ -334,7 +334,7 @@ local function Cache_Data()
 	-- the following query produces dbtableguidlow results for all hostiles creatures on any maps listed in mythiclite_template, excluding faction 35 and 31 (friendly / neutral(passive)).
 	-- query = WorldDBQuery("SELECT c.guid, c.map FROM fun_world.creature c INNER JOIN fun_world.eluna_mythiclite_template emt ON c.map = emt.mapID INNER JOIN fun_world.creature_template ct ON c.id1 = ct.entry WHERE ct.faction NOT IN (35, 31);")
 	print("[MythicLite.Lua] Caching enemy forces data...")
-	query = WorldDBQuery("SELECT `guid`, `mapID` FROM fun_world.eluna_mythiclite_template_mobs;")
+	query = WorldDBQuery("SELECT `guid`, `mapID` FROM eluna_mythiclite_template_mobs;")
 	if query then -- local mythiclite_template_mobs = [mapID] = {guid1, guid2, guid3, ...}
 		for x=1,query:GetRowCount(),1 do
 			local guid = query:GetUInt32(0)
