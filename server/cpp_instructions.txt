@@ -1,0 +1,23 @@
+In order for chat links to work, and for users to see keystone information via tooltip, some C++ in the server needs to be adjusted.
+
+Open the file src/server/game/Handlers/ChatHandler.cpp
+
+Search for the following:
+
+        // Validate hyperlinks
+        /*if (!ValidateHyperlinksAndMaybeKick(msg))
+        {
+            return;
+        }
+
+And we are going to comment it out for now, which will disable the strictness related to checking links.
+
+In order to comment out this block of code, copy and paste it with the following -
+
+        // CUSTOM: Remove hyperlink validation for MythicLite. - grimreapaa
+        // Validate hyperlinks
+        /*if (!ValidateHyperlinksAndMaybeKick(msg))
+        {
+            return;
+        }
+        */
