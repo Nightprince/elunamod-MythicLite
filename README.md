@@ -1,6 +1,8 @@
 # MythicLite™
 This is the formal documentation sheet for the MythicLite feature.
 
+An alternative documentation link is available here - https://docs.google.com/document/d/1lO2vt7rZNwL6at2UXp9UDQ9XhAFRmqIbkwhJ2pxX-rM/edit?usp=sharing
+
 # Installation
 MythicLite requires the following assets -
 
