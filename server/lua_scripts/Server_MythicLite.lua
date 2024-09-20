@@ -1121,6 +1121,11 @@ function MythicLiteHandlers.rerollMyKeystone(player)
 		end
 	end
 
+	if duration == 0 and itemGUID == nil then -- player does not have item and no record of progressing a dungeon, zerokey detected and send them a new key.
+		generateKeystone(player)
+		return
+	end
+
 	-- determine if the dungeon has been finished within the timelimit, if not, set the level to be unchanged from the old keystone level
 	if duration > dungeon_timer then
 		mythiclevel = playerKeystone[playerGUID][2]
